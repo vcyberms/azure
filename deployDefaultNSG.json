@@ -1,0 +1,213 @@
+{
+  "properties": {
+    "displayName": "Deploy Default NSG if not Exist on Subnet",
+    "policyType": "Custom",
+    "mode": "All",
+    "metadata": {
+      "category": "Network",
+      "createdBy": "16a4a428-fa1b-4f90-86ae-caec22f2f240",
+      "createdOn": "2024-05-17T08:15:00.8854742Z",
+      "updatedBy": "16a4a428-fa1b-4f90-86ae-caec22f2f240",
+      "updatedOn": "2024-05-17T09:17:09.8296153Z"
+    },
+    "version": "1.0.0",
+    "parameters": {
+      "listOfIgnoredSubnetNames": {
+        "type": "Array",
+        "metadata": {
+          "displayName": "Ignored subnet names",
+          "description": "The list of subnet names the policy should ignore because they are reserved by NRP and incompatible with NSGs, such as GatewaySubnet, AzureBastionSubnet, etc"
+        },
+        "defaultValue": [
+          "GatewaySubnet",
+          "AzureBastionSubnet",
+          "AzureFirewallSubnet",
+          "AzureFirewallManagerSubnet",
+          "AzureRouteServerSubnet"
+        ]
+      }
+    },
+    "policyRule": {
+      "if": {
+        "allOf": [
+          {
+            "field": "type",
+            "equals": "Microsoft.Network/virtualNetworks/subnets"
+          },
+          {
+            "not": {
+              "value": "[resourceGroup().tags['Automation']]",
+              "equals": "Ignore"
+            }
+          },
+          {
+            "not": {
+              "field": "tags['Automation']",
+              "equals": "Ignore"
+            }
+          },
+          {
+            "field": "name",
+            "notIn": "[parameters('listOfIgnoredSubnetNames')]"
+          }
+        ]
+      },
+      "then": {
+        "effect": "deployIfNotExists",
+        "details": {
+          "type": "Microsoft.Network/virtualNetworks/subnets",
+          "name": "[field('fullName')]",
+          "existenceCondition": {
+            "allOf": [
+              {
+                "field": "Microsoft.Network/virtualNetworks/subnets/networkSecurityGroup.id",
+                "notIn": [
+                  "null",
+                  ""
+                ]
+              },
+              {
+                "field": "Microsoft.Network/virtualNetworks/subnets/networkSecurityGroup.id",
+                "exists": "true"
+              }
+            ]
+          },
+          "roleDefinitionIds": [
+            "/providers/Microsoft.Authorization/roleDefinitions/4d97b98b-1d4f-4787-a291-c67834d212e7"
+          ],
+          "deployment": {
+            "properties": {
+              "mode": "incremental",
+              "template": {
+                "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json",
+                "contentVersion": "1.0.0.1",
+                "parameters": {
+                  "fullSubnetName": {
+                    "type": "String"
+                  }
+                },
+                "variables": {
+                  "VNetDeploymentName": "CASG-VNet-Retrieve",
+                  "nsgDeploymentName": "[concat(variables('nsgName'), 'Deployment')]",
+                  "templateUrl": "https://cssautomationassets.blob.core.windows.net/templates-staging/",
+                  "vnetName": "[first(split(parameters('fullSubnetName'),'/'))]",
+                  "subnetName": "[last(split(parameters('fullSubnetName'),'/'))]",
+                  "nsgName": "[concat(variables('vnetName'), '-', variables('subnetName'), '-nsg')]",
+                  "nsgUpdateJson": {
+                    "networkSecurityGroup": {
+                      "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+                    }
+                  }
+                },
+                "resources": [
+                  {
+                    "type": "Microsoft.Resources/deployments",
+                    "apiVersion": "2018-05-01",
+                    "name": "[variables('nsgDeploymentName')]",
+                    "properties": {
+                      "mode": "Incremental",
+                      "template": {
+                        "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                        "contentVersion": "1.0.0.0",
+                        "resources": [
+                          {
+                            "location": "[reference(resourceId('Microsoft.Network/virtualNetworks', variables('vnetName')), '2019-09-01', 'Full').location]",
+                            "type": "Microsoft.Network/networkSecurityGroups",
+                            "name": "[variables('nsgName')]",
+                            "apiVersion": "2018-03-01",
+                            "tags": {
+                              "Creator": "Automatically added by CASG Azure Policy",
+                              "CASG-Info": "http://aka.ms/cssbaselinesecurity"
+                            },
+                            "properties": {
+                              "securityRules": [
+                                {
+                                  "name": "AllowCorpnet",
+                                  "id": "[resourceId('Microsoft.Network/networkSecurityGroups/securityRules', variables('nsgName'), 'AllowCorpnet')]",
+                                  "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                                  "properties": {
+                                    "description": "CSS Governance Security Rule.  Allow Corpnet inbound.  https://aka.ms/casg",
+                                    "protocol": "*",
+                                    "sourcePortRange": "*",
+                                    "destinationPortRange": "*",
+                                    "sourceAddressPrefix": "CorpNetPublic",
+                                    "destinationAddressPrefix": "*",
+                                    "access": "Allow",
+                                    "priority": 2700,
+                                    "direction": "Inbound"
+                                  }
+                                },
+                                {
+                                  "name": "AllowSAW",
+                                  "id": "[resourceId('Microsoft.Network/networkSecurityGroups/securityRules', variables('nsgName'), 'AllowSAW')]",
+                                  "type": "Microsoft.Network/networkSecurityGroups/securityRules",
+                                  "properties": {
+                                    "description": "CSS Governance Security Rule.  Allow SAW inbound.  https://aka.ms/casg",
+                                    "protocol": "*",
+                                    "sourcePortRange": "*",
+                                    "destinationPortRange": "*",
+                                    "sourceAddressPrefix": "CorpNetSaw",
+                                    "destinationAddressPrefix": "*",
+                                    "access": "Allow",
+                                    "priority": 2701,
+                                    "direction": "Inbound"
+                                  }
+                                }
+                              ]
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "Microsoft.Resources/deployments",
+                    "name": "[concat('CASG-Update-Subnet-Without-NSG-', variables('subnetName'))]",
+                    "apiVersion": "2018-05-01",
+                    "properties": {
+                      "mode": "Incremental",
+                      "template": {
+                        "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                        "contentVersion": "1.0.0.0",
+                        "resources": [
+                          {
+                            "apiVersion": "2018-11-01",
+                            "type": "Microsoft.Network/virtualNetworks/subnets",
+                            "name": "[parameters('fullSubnetName')]",
+                            "properties": "[union(reference(resourceId('Microsoft.Network/virtualNetworks/subnets', variables('vnetName'), variables('subnetName')), '2018-11-01'), variables('nsgUpdateJson'))]"
+                          }
+                        ]
+                      }
+                    },
+                    "dependsOn": [
+                      "[variables('nsgDeploymentName')]"
+                    ]
+                  }
+                ]
+              },
+              "parameters": {
+                "fullSubnetName": {
+                  "value": "[field('fullName')]"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "versions": [
+      "1.0.0"
+    ]
+  },
+  "id": "/subscriptions/1245de48-7061-4dfa-9141-0f6278b3f8e9/providers/Microsoft.Authorization/policyDefinitions/917c97ad-0950-4d89-9df6-6acaf409a4ff",
+  "type": "Microsoft.Authorization/policyDefinitions",
+  "name": "917c97ad-0950-4d89-9df6-6acaf409a4ff",
+  "systemData": {
+    "createdBy": "v-zhihechen@microsoft.com",
+    "createdByType": "User",
+    "createdAt": "2024-05-17T08:15:00.862682Z",
+    "lastModifiedBy": "v-zhihechen@microsoft.com",
+    "lastModifiedByType": "User",
+    "lastModifiedAt": "2024-05-17T09:17:09.8071655Z"
+  }
+}
