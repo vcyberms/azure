@@ -87,9 +87,7 @@
                   }
                 },
                 "variables": {
-                  "VNetDeploymentName": "CASG-VNet-Retrieve",
                   "nsgDeploymentName": "[concat(variables('nsgName'), 'Deployment')]",
-                  "templateUrl": "https://cssautomationassets.blob.core.windows.net/templates-staging/",
                   "vnetName": "[first(split(parameters('fullSubnetName'),'/'))]",
                   "subnetName": "[last(split(parameters('fullSubnetName'),'/'))]",
                   "nsgName": "[concat(variables('vnetName'), '-', variables('subnetName'), '-nsg')]",
